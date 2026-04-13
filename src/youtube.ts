@@ -3,6 +3,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+// Use browser cookies to avoid YouTube bot detection / rate limiting
+// Set YT_COOKIES_BROWSER env var to override (e.g. "firefox", "brave")
+const COOKIES_BROWSER = process.env.YT_COOKIES_BROWSER ?? "chrome";
+const COOKIE_ARGS = ["--cookies-from-browser", COOKIES_BROWSER] as const;
+
 export type VideoInfo = {
   readonly id: string;
   readonly title: string;
@@ -44,7 +49,7 @@ function parseVideoId(url: string): string {
 
 export async function getVideoInfo(url: string): Promise<VideoInfo> {
   const result =
-    await $`yt-dlp --dump-json --no-download ${url}`.text();
+    await $`yt-dlp ${COOKIE_ARGS} --dump-json --no-download ${url}`.text();
   const data = JSON.parse(result);
 
   return {
@@ -67,7 +72,7 @@ export async function getTranscript(
 
   try {
     // Try auto-generated subs first, then manual subs
-    await $`yt-dlp --write-auto-sub --sub-lang ${language} --sub-format json3 --skip-download -o ${join(tmpDir, "sub")} ${url}`.quiet();
+    await $`yt-dlp ${COOKIE_ARGS} --write-auto-sub --sub-lang ${language} --sub-format json3 --skip-download -o ${join(tmpDir, "sub")} ${url}`.quiet();
 
     const { Glob } = await import("bun");
     const glob = new Glob("*.json3");
@@ -78,7 +83,7 @@ export async function getTranscript(
 
     if (files.length === 0) {
       // Fallback: try manual subtitles
-      await $`yt-dlp --write-sub --sub-lang ${language} --sub-format json3 --skip-download -o ${join(tmpDir, "sub")} ${url}`.quiet();
+      await $`yt-dlp ${COOKIE_ARGS} --write-sub --sub-lang ${language} --sub-format json3 --skip-download -o ${join(tmpDir, "sub")} ${url}`.quiet();
       for await (const file of glob.scan(tmpDir)) {
         files.push(join(tmpDir, file));
       }
@@ -120,7 +125,7 @@ export async function getTranscript(
 }
 
 export async function getStreamUrl(url: string): Promise<string> {
-  return $`yt-dlp -f "bv*[height<=720]/bv*/b" --get-url ${url}`
+  return $`yt-dlp ${COOKIE_ARGS} -f "bv*[height<=720]/bv*/b" --get-url ${url}`
     .text()
     .then((t) => t.trim().split("\n")[0]);
 }
